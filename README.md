@@ -44,11 +44,11 @@ local data = 200
 local buff = byteWorks.createAndSerialize(u8, 0, data)
 local deserialized = byteWorks.resultExcludingCursor(u8, buff, 0)
 ```
-Some types need to be created by passing in parameters, for example array expects the type:
+Some types need to be created by passing in parameters, for example array expects the type and a number indicating how many bytes should be allocated to store the number of entries:
 ```luau
 local byteWorks = require(game.ReplicatedStorage.ByteWorks)
 
-local array = byteWorks.array(byteWorks.u8)
+local array = byteWorks.array(byteWorks.u8, 1)
 local data = {1, 2, 3, 4, 5}
 local buff = byteWorks.createBufferFromType(array, data) -- this is where passing in the value is vital
 array.ser(buff, 0, data)
