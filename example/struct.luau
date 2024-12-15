@@ -2,8 +2,8 @@ local byteWorks = require(game.ReplicatedStorage.ByteWorks)
 
 local struct = byteWorks.struct({
 	name = byteWorks.string(10),
-	location = byteWorks.vector3(ByteWorks.f32),
-	items = byteWorks.array(ByteWorks.struct({
+	location = byteWorks.vector3(byteWorks.f32),
+	items = byteWorks.array(byteWorks.struct({
 		itemId = byteWorks.u16
 	}), 1)
 })
