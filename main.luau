@@ -885,9 +885,9 @@ function ByteWorks.resultExcludingCursor(serDesType, buff, offset)
 	return select(2, serDesType.des(buff, offset))
 end
 
-function ByteWorks.createAndSerialize(serDesType, offset, value)
-	local buff = buffer.create(serDesType.size(value))
-	serDesType.ser(buff, offset, value)
+function ByteWorks.createAndSerialize(serDesType, offset, ...)
+	local buff = buffer.create(serDesType.size(...))
+	serDesType.ser(buff, offset, ...)
 	return buff
 end
 
