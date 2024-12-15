@@ -647,7 +647,7 @@ function ByteWorks.array(serDesType, sizeIndicator)
 			for _, element in elements do
 				cursor = serDesType.ser(buff, cursor, element)
 			end
-
+			
 			return cursor
 		end,
 		des = function(buff, offset)
@@ -703,25 +703,25 @@ function ByteWorks.struct(fields)
 	
 	return table.freeze({
 		ser = function(buff, offset, value)
-			local cursor = offset + 0
+			local cursor = offset
 
 			for _, field in order do
 				local serDesType = fields[field]
-				cursor = serDesType.ser(buff, offset + cursor, value[field])
+				cursor = serDesType.ser(buff, cursor, value[field])
 			end
 
-			return offset + cursor
+			return cursor
 		end,
 		des = function(buff, offset)
-			local cursor = offset + 0
+			local cursor = offset
 			local elements = {}
 
 			for _, field in order do
 				local serDesType = fields[field]
-				cursor, elements[field] = serDesType.des(buff, offset + cursor)
+				cursor, elements[field] = serDesType.des(buff, cursor)
 			end
 
-			return offset + cursor, elements
+			return cursor, elements
 		end,
 		size = function(value)
 			local totalSize = 0
