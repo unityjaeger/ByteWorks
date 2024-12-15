@@ -54,3 +54,4 @@ local buff = byteWorks.createBufferFromType(array, data) -- this is where passin
 array.ser(buff, 0, data)
 local _, deserialized = array.des(buff, 0)
 ```
+additional examples are in the example folder
