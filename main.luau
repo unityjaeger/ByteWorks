@@ -105,6 +105,8 @@ local function readf16(buff, offset)
 		local result = math.ldexp(fraction, exponent - 14)
 		return if encoded // 0x8000 == 1 then -result else result
 	end
+	
+	return value
 end
 
 --unsigned integers
@@ -452,11 +454,11 @@ end
 
 ByteWorks.color3 = table.freeze({
 	ser = function(buff, offset, value)
-		writef16(buff, offset, value.X)
+		writef16(buff, offset, value.R)
 		offset += 2
-		writef16(buff, offset, value.X)
+		writef16(buff, offset, value.G)
 		offset += 2
-		writef16(buff, offset, value.X)
+		writef16(buff, offset, value.B)
 		offset += 2
 		return offset
 	end,
@@ -474,13 +476,14 @@ ByteWorks.color3 = table.freeze({
 
 ByteWorks.cframe = table.freeze({
 	ser = function(buff, offset, value)
+		-- Serialize position
 		buffer.writef32(buff, offset, value.X)
 		offset += 4
 		buffer.writef32(buff, offset, value.Y)
 		offset += 4
 		buffer.writef32(buff, offset, value.Z)
 		offset += 4
-		
+
 		local rotX, rotY, rotZ = value:ToOrientation()
 		writef16(buff, offset, rotX)
 		offset += 2
@@ -488,19 +491,28 @@ ByteWorks.cframe = table.freeze({
 		offset += 2
 		writef16(buff, offset, rotZ)
 		offset += 2
+		
 		return offset
 	end,
-	des = function(buff, offset, value)
-		return offset + 18, CFrame.new(
-			buffer.readf32(buff, offset),
-			buffer.readf32(buff, offset + 4),
-			buffer.readf32(buff, offset + 8)
-		) * CFrame.fromOrientation(
-			readf16(buff, offset + 12),
-			readf16(buff, offset + 14),
-			readf16(buff, offset + 16)
-		)
+
+	des = function(buff, offset)
+		local posX = buffer.readf32(buff, offset)
+		offset += 4
+		local posY = buffer.readf32(buff, offset)
+		offset += 4
+		local posZ = buffer.readf32(buff, offset)
+		offset += 4
+
+		local rotX = readf16(buff, offset)
+		offset += 2
+		local rotY = readf16(buff, offset)
+		offset += 2
+		local rotZ = readf16(buff, offset)
+		offset += 2
+		
+		return offset, CFrame.new(posX, posY, posZ) * CFrame.fromOrientation(rotX, rotY, rotZ)
 	end,
+
 	size = function(value)
 		return 18
 	end,
@@ -511,25 +523,27 @@ function ByteWorks.bitfield(serDesType, bitCounts)
 
 	return table.freeze({
 		ser = function(buff, offset, values)
-			local bit32bor = 0
-			local cursor = offset + sizeInBits
+			local packedValue = 0
+			local curentBitPosition = sizeInBits
 
 			for i, bitCount in bitCounts do
-				cursor -= bitCount
-				bit32bor = bit32.bor(bit32bor, bit32.lshift(values[i], cursor))
+				curentBitPosition -= bitCount
+				packedValue = bit32.bor(packedValue, bit32.lshift(values[i], curentBitPosition))
 			end
 			
-			serDesType.ser(buff, offset, bit32bor)
+			serDesType.ser(buff, offset, packedValue)
 			return offset + serDesType.size()
 		end,
 		des = function(buff, offset)
-			local _, packed = serDesType.des(buff, offset)
-			local cursor = offset + sizeInBits
+			local _, packedValue = serDesType.des(buff, offset)
+			local currentBitPosition = sizeInBits
 			local values = {}
 
 			for i, bitCount in bitCounts do
-				cursor -= bitCount
-				values[i] = bit32.rshift(bit32.band(packed, bit32.lshift(bit32.lshift(1, bitCount) - 1, cursor)), cursor)
+				currentBitPosition -= bitCount
+				local mask = bit32.lshift(1, bitCount) - 1
+				local value = bit32.rshift(packedValue, currentBitPosition)
+				values[i] = bit32.band(value, mask)
 			end
 			
 			return offset + serDesType.size(), values
