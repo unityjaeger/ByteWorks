@@ -1,4 +1,4 @@
-local SerDes = {}
+local ByteWorks = {}
 --writef16 and readf16 taken from Blink by Axen ngl
 
 local function writei24(buff, offset, value)
@@ -108,7 +108,7 @@ local function readf16(buff, offset)
 end
 
 --unsigned integers
-SerDes.u8 = table.freeze({
+ByteWorks.u8 = table.freeze({
 	ser = function(buff, offset, value)
 		buffer.writeu8(buff, offset, value)
 		return offset + 1
@@ -120,7 +120,7 @@ SerDes.u8 = table.freeze({
 		return 1
 	end,
 })
-SerDes.u16 = table.freeze({
+ByteWorks.u16 = table.freeze({
 	ser = function(buff, offset, value)
 		buffer.writeu16(buff, offset, value)
 		return offset + 2
@@ -132,7 +132,7 @@ SerDes.u16 = table.freeze({
 		return 2
 	end,
 })
-SerDes.u24 = table.freeze({
+ByteWorks.u24 = table.freeze({
 	ser = function(buff, offset, value)
 		writeu24(buff, offset, value)
 		return offset + 3
@@ -144,7 +144,7 @@ SerDes.u24 = table.freeze({
 		return 3
 	end,
 })
-SerDes.u32 = table.freeze({
+ByteWorks.u32 = table.freeze({
 	ser = function(buff, offset, value)
 		buffer.writeu32(buff, offset, value)
 		return offset + 4
@@ -156,7 +156,7 @@ SerDes.u32 = table.freeze({
 		return 4
 	end,
 })
-SerDes.u53 = table.freeze({
+ByteWorks.u53 = table.freeze({
 	ser = function(buff, offset, value)
 		writeu53(buff, offset, value)
 		return offset + 7
@@ -170,7 +170,7 @@ SerDes.u53 = table.freeze({
 })
 
 --signed integers
-SerDes.i8 = table.freeze({
+ByteWorks.i8 = table.freeze({
 	ser = function(buff, offset, value)
 		buffer.writei8(buff, offset, value)
 		return offset + 1
@@ -182,7 +182,7 @@ SerDes.i8 = table.freeze({
 		return 1
 	end,
 })
-SerDes.i16 = table.freeze({
+ByteWorks.i16 = table.freeze({
 	ser = function(buff, offset, value)
 		buffer.writei16(buff, offset, value)
 		return offset + 2
@@ -194,7 +194,7 @@ SerDes.i16 = table.freeze({
 		return 2
 	end,
 })
-SerDes.i24 = table.freeze({
+ByteWorks.i24 = table.freeze({
 	ser = function(buff, offset, value)
 		writei24(buff, offset, value)
 		return offset + 3
@@ -206,7 +206,7 @@ SerDes.i24 = table.freeze({
 		return 3
 	end,
 })
-SerDes.i32 = table.freeze({
+ByteWorks.i32 = table.freeze({
 	ser = function(buff, offset, value)
 		buffer.writei32(buff, offset, value)
 		return offset + 4
@@ -218,7 +218,7 @@ SerDes.i32 = table.freeze({
 		return 4
 	end,
 })
-SerDes.i53 = table.freeze({
+ByteWorks.i53 = table.freeze({
 	ser = function(buff, offset, value)
 		writei53(buff, offset, value)
 		return offset + 7
@@ -232,7 +232,7 @@ SerDes.i53 = table.freeze({
 })
 
 --floating point numbers
-SerDes.f16 = table.freeze({
+ByteWorks.f16 = table.freeze({
 	ser = function(buff, offset, value)
 		writef16(buff, offset, value)
 		return offset + 2
@@ -244,7 +244,7 @@ SerDes.f16 = table.freeze({
 		return 2
 	end,
 })
-SerDes.f32 = table.freeze({
+ByteWorks.f32 = table.freeze({
 	ser = function(buff, offset, value)
 		buffer.writef32(buff, offset, value)
 		return offset + 4
@@ -256,7 +256,7 @@ SerDes.f32 = table.freeze({
 		return 4
 	end,
 })
-SerDes.f64 = table.freeze({
+ByteWorks.f64 = table.freeze({
 	ser = function(buff, offset, value)
 		buffer.writef64(buff, offset, value)
 		return offset + 8
@@ -270,7 +270,7 @@ SerDes.f64 = table.freeze({
 })
 
 --variable length unsigned integers
-SerDes.vlq = table.freeze({
+ByteWorks.vlq = table.freeze({
 	ser = function(buff, offset, value)
 		repeat
 			local byte = bit32.band(value, 0x7F) 
@@ -311,7 +311,7 @@ SerDes.vlq = table.freeze({
 })
 
 --variable length signed integers
-SerDes.svlq = table.freeze({
+ByteWorks.svlq = table.freeze({
 	ser = function(buff, offset, value)
 		local zigzagValue = bit32.bxor(bit32.lshift(value, 1), bit32.arshift(value, 31))
 		
@@ -354,7 +354,7 @@ SerDes.svlq = table.freeze({
 	end,
 })
 
-function SerDes.string(count)
+function ByteWorks.string(count)
 	return table.freeze({
 		ser = function(buff, offset, value)
 			buffer.writestring(buff, offset, value, count)
@@ -369,7 +369,7 @@ function SerDes.string(count)
 	})
 end
 
-function SerDes.bitmask(bitCount)
+function ByteWorks.bitmask(bitCount)
 	local byteCount = math.ceil(bitCount / 8)
 	return table.freeze({
 		ser = function(buff, offset, value)
@@ -398,7 +398,7 @@ function SerDes.bitmask(bitCount)
 	})
 end
 
-function SerDes.vector3(serDesType)
+function ByteWorks.vector3(serDesType)
 	local size = serDesType.size()
 	local totalSize = size * 3
 	
@@ -414,9 +414,9 @@ function SerDes.vector3(serDesType)
 		end,
 		des = function(buff, offset)
 			return offset + totalSize, Vector3.new(
-				serDesType.des(buff, offset),
-				serDesType.des(buff, offset + size),
-				serDesType.des(buff, offset + size * 2)
+				select(2, serDesType.des(buff, offset)),
+				select(2, serDesType.des(buff, offset + size)),
+				select(2, serDesType.des(buff, offset + size * 2))
 			)
 		end,
 		size = function(value)
@@ -425,7 +425,7 @@ function SerDes.vector3(serDesType)
 	})
 end
 
-function SerDes.vector3XZ(serDesType)
+function ByteWorks.vector3XZ(serDesType)
 	local size = serDesType.size()
 	local totalSize = size * 2
 	
@@ -439,9 +439,9 @@ function SerDes.vector3XZ(serDesType)
 		end,
 		des = function(buff, offset)
 			return offset + totalSize, Vector3.new(
-				serDesType.des(buff, offset),
+				select(2, serDesType.des(buff, offset)),
 				0,
-				serDesType.des(buff, offset + size)
+				select(2, serDesType.des(buff, offset + size))
 			)
 		end,
 		size = function(value)
@@ -450,7 +450,7 @@ function SerDes.vector3XZ(serDesType)
 	})
 end
 
-SerDes.color3 = table.freeze({
+ByteWorks.color3 = table.freeze({
 	ser = function(buff, offset, value)
 		writef16(buff, offset, value.X)
 		offset += 2
@@ -472,7 +472,7 @@ SerDes.color3 = table.freeze({
 	end,
 })
 
-SerDes.cframe = table.freeze({
+ByteWorks.cframe = table.freeze({
 	ser = function(buff, offset, value)
 		buffer.writef32(buff, offset, value.X)
 		offset += 4
@@ -506,7 +506,7 @@ SerDes.cframe = table.freeze({
 	end,
 })
 
-function SerDes.bitfield(serDesType, bitCounts)
+function ByteWorks.bitfield(serDesType, bitCounts)
 	local sizeInBits = serDesType.size() * 8
 
 	return table.freeze({
@@ -523,7 +523,7 @@ function SerDes.bitfield(serDesType, bitCounts)
 			return offset + serDesType.size()
 		end,
 		des = function(buff, offset)
-			local packed = serDesType.des(buff, offset)
+			local _, packed = serDesType.des(buff, offset)
 			local cursor = offset + sizeInBits
 			local values = {}
 
@@ -541,7 +541,7 @@ function SerDes.bitfield(serDesType, bitCounts)
 end
 
 --if it works it works
-function SerDes.optional(serDesType)
+function ByteWorks.optional(serDesType)
 	local clone = table.clone(serDesType)
 	clone.optionalFlag = true
 	return clone
@@ -550,7 +550,7 @@ end
 --quick and dirty wrapper method to convert tuple I/O to table I/O
 --if you want optimal performance you should copy and modify the methods using tuples to natively use table I/O
 --boolean is a tuple so its easy to only use a single boolean without having it be a table filled with 7 other booleans defaulting to false (for stuff like {thing = true})
-function SerDes.tupleIOToTable(serDesType)
+function ByteWorks.tupleIOToTable(serDesType)
 	return table.freeze({
 		ser = function(buff, offset, value)
 			return serDesType.ser(buff, offset, table.unpack(value))
@@ -566,7 +566,7 @@ function SerDes.tupleIOToTable(serDesType)
 end
 
 --why not
-function SerDes.tableIOToTuple(serDesType)
+function ByteWorks.tableIOToTuple(serDesType)
 	return table.freeze({
 		ser = function(buff, offset, ...)
 			return serDesType.ser(buff, offset, {...})
@@ -579,7 +579,7 @@ function SerDes.tableIOToTuple(serDesType)
 	})
 end
 
-function SerDes.tuple(...)
+function ByteWorks.tuple(...)
 	local types = {...}
 	return table.freeze({
 		ser = function(buff, offset, ...)
@@ -607,7 +607,7 @@ function SerDes.tuple(...)
 	})
 end
 
-function SerDes.enum(...)
+function ByteWorks.enum(...)
 	local enums = {...}
 	if #enums > 255 then --dont shout at me for not making use of index 0
 		error("cannot have more than 255 enums")
@@ -628,12 +628,12 @@ function SerDes.enum(...)
 	})
 end
 
-function SerDes.array(serDesType, sizeIndicator)
+function ByteWorks.array(serDesType, sizeIndicator)
 	local sizeIndicatorType = 
-		sizeIndicator == 1 and SerDes.u8 or
-		sizeIndicator == 2 and SerDes.u16 or
-		sizeIndicator == 3 and SerDes.u24 or
-		sizeIndicator == 4 and SerDes.u32
+		sizeIndicator == 1 and ByteWorks.u8 or
+		sizeIndicator == 2 and ByteWorks.u16 or
+		sizeIndicator == 3 and ByteWorks.u24 or
+		sizeIndicator == 4 and ByteWorks.u32
 	
 	if not sizeIndicator then
 		error("size indicator was not specified or was not 1, 2, 3 or 4 (bytes)")
@@ -651,10 +651,10 @@ function SerDes.array(serDesType, sizeIndicator)
 			return cursor
 		end,
 		des = function(buff, offset)
-			local count = sizeIndicatorType.des(buff, offset)
+			local _, count = sizeIndicatorType.des(buff, offset)
 			local cursor = offset + sizeIndicator
 			local elements = {}
-
+			
 			for i = 1, count do
 				cursor, elements[i] = serDesType.des(buff, cursor)
 			end
@@ -668,7 +668,7 @@ function SerDes.array(serDesType, sizeIndicator)
 end
 
 --no size indicator overhead!!
-function SerDes.fixedSizeArray(serDesType, fixedSize)
+function ByteWorks.fixedSizeArray(serDesType, fixedSize)
 	return table.freeze({
 		ser = function(buff, offset, elements)
 			local cursor = offset
@@ -695,7 +695,7 @@ function SerDes.fixedSizeArray(serDesType, fixedSize)
 	})
 end
 
-function SerDes.struct(fields)
+function ByteWorks.struct(fields)
 	local order = {}
 	for field in fields do
 		table.insert(order, field)
@@ -736,12 +736,12 @@ function SerDes.struct(fields)
 	})
 end
 
-function SerDes.optionalStruct(fields)
+function ByteWorks.optionalStruct(fields)
 	local order = {}
 	local optionalFields = {}
 	local optionalCount = 0
 
-	for fieldName, field in pairs(fields) do
+	for fieldName, field in fields do
 		table.insert(order, fieldName)
 		if field.optionalFlag then
 			table.insert(optionalFields, fieldName)
@@ -819,7 +819,7 @@ function SerDes.optionalStruct(fields)
 	})
 end
 
-function SerDes.map(keyType, valueType)
+function ByteWorks.map(keyType, valueType)
 	return table.freeze({
 		ser = function(buff, offset, value)
 			local cursor = offset + 1
@@ -858,17 +858,23 @@ function SerDes.map(keyType, valueType)
 end
 
 --quick benchmarks show that the difference between this and a seperate implementation is insignificant
-SerDes.boolean = SerDes.tableIOToTuple(SerDes.bitmask(8))
+ByteWorks.boolean = ByteWorks.tableIOToTuple(ByteWorks.bitmask(8))
 
 --if u want multiple buffers together u can just do
 --buffer.create(type1.size(value1) + type2.size(value2))
-function SerDes.createBufferFromType(serDesType, value)
+function ByteWorks.createBufferFromType(serDesType, value)
 	return buffer.create(serDesType.size(value))
 end
 
---just do local _, result = SerDes[...].des(...) lol
-function SerDes.resultExcludingCursor(serDesType, buff, offset)
+--just do local _, result = ByteWorks[...].des(...) lol
+function ByteWorks.resultExcludingCursor(serDesType, buff, offset)
 	return select(2, serDesType.des(buff, offset))
 end
 
-return SerDes
+function ByteWorks.createAndSerialize(serDesType, offset, value)
+	local buff = buffer.create(serDesType.size(value))
+	serDesType.ser(buff, offset, value)
+	return buff
+end
+
+return ByteWorks
