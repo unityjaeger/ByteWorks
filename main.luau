@@ -1,4 +1,5 @@
 --!strict
+--!native
 
 local ByteWorks = {}
 --writef16 and readf16 taken from Blink by Axen ngl
@@ -528,7 +529,13 @@ ByteWorks.cframe = table.freeze({
 }) :: genericSerDes<CFrame>
 
 function ByteWorks.bitfield(serDesType: genericSerDes<number>, bitCounts: {number}): genericSerDes<{number}>
-	local sizeInBits: number = serDesType.size() * 8
+	local size: number = serDesType.size()
+	local sizeInBits: number = size * 8
+	local masks: {number} = {}
+	
+	for i: number, bitCount: number in bitCounts do
+		masks[i] = bit32.lshift(1, bitCount) - 1
+	end
 
 	return table.freeze({
 		ser = function(buff, offset, value)
@@ -541,7 +548,7 @@ function ByteWorks.bitfield(serDesType: genericSerDes<number>, bitCounts: {numbe
 			end
 
 			serDesType.ser(buff, offset, packedValue)
-			return offset + serDesType.size()
+			return offset + size
 		end,
 		des = function(buff, offset)
 			local _, packedValue: number = serDesType.des(buff, offset)
@@ -550,15 +557,31 @@ function ByteWorks.bitfield(serDesType: genericSerDes<number>, bitCounts: {numbe
 
 			for i: number, bitCount: number in bitCounts do
 				currentBitPosition -= bitCount
-				local mask: number = bit32.lshift(1, bitCount) - 1
 				local value: number = bit32.rshift(packedValue, currentBitPosition)
-				values[i] = bit32.band(value, mask)
+				values[i] = bit32.band(value, masks[i])
 			end
 
-			return offset + serDesType.size(), values
+			return offset + size, values
 		end,
 		size = function(value)
-			return serDesType.size()
+			return size
+		end,
+	})
+end
+
+function ByteWorks.buffer(size: number): genericSerDes<buffer>
+	return table.freeze({
+		ser = function(buff, offset, value)
+			buffer.copy(buff, offset, value, 0, size)
+			return offset + size
+		end,
+		des = function(buff, offset: number)
+			local newBuffer = buffer.create(size)
+			buffer.copy(newBuffer, 0, buff, offset, size)
+			return offset + size, newBuffer
+		end,
+		size = function(value)
+			return size
 		end,
 	})
 end
@@ -603,6 +626,8 @@ function ByteWorks.tableIOToTuple<T>(serDesType: genericSerDes<T>): genericSerDe
 end
 
 --way too tired and inexperienced with types to figure out how to make the types for the above 2 work
+
+warn("issue: tuple size does not have value field")
 
 function ByteWorks.tuple(...: genericSerDes<any>): genericSerDes<any>
 	local types: {genericSerDes<any>} = {...}
@@ -888,11 +913,11 @@ function ByteWorks.createBufferFromType<T>(serDesType: genericSerDes<T>, value: 
 end
 
 --just do local _, result = ByteWorks[...].des(...) lol
-function ByteWorks.resultExcludingCursor<T>(serDesType: genericSerDes<T>, buff: buffer, offset: number): T...
+function ByteWorks.resultExcludingCursor<T>(serDesType: genericSerDes<T>, buff: buffer, offset: number): ...T
 	return select(2, serDesType.des(buff, offset))
 end
 
-function ByteWorks.createAndSerialize<T>(serDesType: genericSerDes<T>, offset: number, ...: T...): buffer
+function ByteWorks.createAndSerialize<T>(serDesType: genericSerDes<T>, offset: number, ...: T): buffer
 	local buff: buffer = buffer.create(serDesType.size(...))
 	serDesType.ser(buff, offset, ...)
 	return buff
