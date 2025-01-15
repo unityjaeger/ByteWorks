@@ -1084,7 +1084,7 @@ function ByteWorks.map<K, V>(keyType: ByteWorksType<K>, valueType: ByteWorksType
 end
 
 --quick benchmarks show that the difference between this and a seperate implementation is insignificant
-ByteWorks.boolean = ByteWorks.tableIOToTuple(ByteWorks.bitmask(8))
+ByteWorks.boolean = ByteWorks.tableIOToTuple(ByteWorks.bitmask(8)) :: ByteWorksType<...boolean>
 
 --if u want multiple buffers together u can just do
 --buffer.create(type1.size(value1) + type2.size(value2))
