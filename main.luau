@@ -415,40 +415,27 @@ function ByteWorks.bitmask(bitCount: number): ByteWorksType<{boolean}>
 	})
 end
 
-function ByteWorks.vector3(typeX: ByteWorksType<number>, typeY: ByteWorksType<number>, typeZ: ByteWorksType<number>): ByteWorksType<Vector3>
-	local firstSize = typeX.size(0)
-	local secondSize
-	local thirdSize
-	
-	if typeY then
-		secondSize = typeY.size(0)
-		thirdSize = typeZ.size(0)
-	else
-		secondSize = firstSize
-		thirdSize = firstSize
-		typeY = typeX
-		typeZ = typeX
-	end
-	
-	local totalSize: number = firstSize + secondSize + thirdSize
+function ByteWorks.vector3(serDesType: ByteWorksType<number>): ByteWorksType<Vector3>
+	local size = serDesType.size(0)
+	local totalSize: number = size * 3
 
 	return table.freeze({
 		ser = function(buff, offset, value: Vector3)
-			typeX.ser(buff, offset, value.X)
-			offset += firstSize
-			typeY.ser(buff, offset, value.Y)
-			offset += secondSize
-			typeZ.ser(buff, offset, value.Z)
-			offset += thirdSize
+			serDesType.ser(buff, offset, value.X)
+			offset += size
+			serDesType.ser(buff, offset, value.Y)
+			offset += size
+			serDesType.ser(buff, offset, value.Z)
+			offset += size
 			return offset
 		end,
 		des = function(buff, offset: number)
-			local _, x = typeX.des(buff, offset)
-			offset += firstSize
-			local _, y = typeY.des(buff, offset)
-			offset += secondSize
-			local _, z = typeZ.des(buff, offset)
-			offset += thirdSize
+			local _, x = serDesType.des(buff, offset)
+			offset += size
+			local _, y = serDesType.des(buff, offset)
+			offset += size
+			local _, z = serDesType.des(buff, offset)
+			offset += size
 			
 			return offset, Vector3.new(x, y, z)
 		end,
