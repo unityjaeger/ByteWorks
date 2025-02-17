@@ -436,7 +436,7 @@ function ByteWorks.vector3(serDesType: ByteWorksType<number>): ByteWorksType<Vec
 			offset += size
 			local _, z = serDesType.des(buff, offset)
 			offset += size
-			
+
 			return offset, Vector3.new(x, y, z)
 		end,
 		size = function(value)
@@ -570,7 +570,8 @@ end
 
 ByteWorks.vbuffer = table.freeze({
 	ser = function(buff, offset, value)
-		local size = ByteWorks.vlq.ser(buff, offset, buffer.len(value))
+		local size = buffer.len(value)
+		local offset = ByteWorks.vlq.ser(buff, offset, size)
 		buffer.copy(buff, offset, value, 0, size)
 		return offset + size
 	end,
@@ -734,7 +735,7 @@ function ByteWorks.enum(enum): ByteWorksType<any>
 
 	local numberType: ByteWorksType<number> = highestValue > 255 and ByteWorks.u16 or ByteWorks.u8
 	local size = numberType.size(0)
-	
+
 	return table.freeze({
 		ser = function(buff, offset, value: EnumItem)
 			return numberType.ser(buff, offset, value.Value)
@@ -976,8 +977,8 @@ ByteWorks.boolean = ByteWorks.tableIOToTuple(ByteWorks.bitmask(8)) :: ByteWorksT
 
 --if u want multiple buffers together u can just do
 --buffer.create(type1.size(value1) + type2.size(value2))
-function ByteWorks.createBufferFromType<T>(serDesType: ByteWorksType<T>, value: T): buffer
-	return buffer.create(serDesType.size(value))
+function ByteWorks.createBufferFromType<T>(serDesType: ByteWorksType<T>, ...: T): buffer
+	return buffer.create(serDesType.size(...))
 end
 
 --just do local _, result = ByteWorks[...].des(...) lol (unless using tuple types)
