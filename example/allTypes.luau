@@ -10,15 +10,14 @@ local allTypes = byteWorks.struct({
 	i24 = byteWorks.i24,
 	i53 = byteWorks.i53,
 	f16 = byteWorks.f16,
-	vlq = byteWorks.vlq,
-	svlq = byteWorks.svlq,
+	vlq = byteWorks.vlq, --variable length quantity number
+	svlq = byteWorks.svlq, --signed variable length quantity number
 	boolean = byteWorks.boolean,
 	cframe = byteWorks.cframe,
 	vector3 = byteWorks.vector3(byteWorks.i24),
-	vector3XZ = byteWorks.vector3XZ(byteWorks.f32),
 	color3 = byteWorks.color3,
 	map = byteWorks.map(
-		byteWorks.enum("key1", "key2", "key3"), --key
+		byteWorks.literal("key1", "key2", "key3"), --key
 		byteWorks.u8 --value
 	),
 	array = byteWorks.array(byteWorks.boolean, 1),
@@ -28,7 +27,12 @@ local allTypes = byteWorks.struct({
 	optionalStruct = byteWorks.optionalStruct({ --struct containing optionals
 		optionalu8 = byteWorks.optional(byteWorks.u8)
 	}),
-	string = byteWorks.string(5), --5 length string
+	string = byteWorks.string(5), --fixed length string
+	vstring = byteWorks.vstring, --variable length string
+	buffer = byteWorks.buffer(10), --fixed size buffer
+	vbuffer = byteWorks.vbuffer, --variable size buffer
+	literal = byteWorks.literal(1, 2, 3), --can either be 1, 2, or 3
+	enum = byteWorks.enum(Enum.KeyCode), --any enum from keycode
 })
 
 --see tuples.luau for examples on types with tuples, which do not work properly with structs since they only return the first value (by default)
@@ -47,7 +51,6 @@ local data = {
 	boolean = true,
 	cframe = CFrame.new(5, -5, -7) * CFrame.fromOrientation(1, 2, 3),
 	vector3 = Vector3.new(-100, -50, 100),
-	vector3XZ = Vector3.new(100.252, 0, -100.825),
 	color3 = Color3.new(1, .575, 0),
 	map = {
 		key1 = 1,
@@ -60,8 +63,15 @@ local data = {
 	optionalStruct = {
 		optionalu8 = nil
 	},
-	string = "abcde"
+	string = "abcde",
+	vstring = "abcdefghijk",
+	buffer = buffer.create(10),
+	vbuffer = buffer.create(123),
+	literal = 2,
+	enum = Enum.KeyCode.E,
 }
 
-local buff = byteWorks.createAndSerialize(allTypes, 0, data)
-local deserialized = byteWorks.resultExcludingCursor(buff, 0)
+--taggedEnum exists but currently its just a worse glorified optionalStruct so i wouldnt reccomend using it
+
+local buff = byteWorks.createAndSerialize(allTypes, data)
+local deserialized = byteWorks.resultExcludingCursor(allTypes, buff, 0)
