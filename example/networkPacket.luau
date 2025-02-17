@@ -4,7 +4,7 @@ local networkPacket = byteWorks.struct({
 	identifier = byteWorks.u8,
 	position = byteWorks.vector3(byteWorks.f32),
 	rotation = byteWorks.bitfield(byteWorks.u32, {10, 12, 10}),
-	state = byteWorks.enum("Dead", "Walking", "Idle", "Jumping", "Falling"),
+	state = byteWorks.literal("Dead", "Walking", "Idle", "Jumping", "Falling"),
 })
 
 local data = {
@@ -15,5 +15,5 @@ local data = {
 	state = "Idle"
 }
 
-local buff = byteWorks.createAndSerialize(networkPacket, 0, data)
+local buff = byteWorks.createAndSerialize(networkPacket, data)
 local deserialized = byteWorks.resultExcludingCursor(networkPacket, buff, 0)
