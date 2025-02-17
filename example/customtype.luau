@@ -19,5 +19,5 @@ local customType = table.freeze({
 
 local data = {5, 10}
 
-local buff = byteWorks.createAndSerialize(customType, 0, data)
+local buff = byteWorks.createAndSerialize(customType, data)
 local deserialized = byteWorks.resultExcludingCursor(customType, buff, 0)
