@@ -41,7 +41,7 @@ local _, deserialized = u8.des(buff, 0)
 --alternatively, the code could also look like this
 local u8 = byteWorks.u8
 local data = 200
-local buff = byteWorks.createAndSerialize(u8, 0, data)
+local buff = byteWorks.createAndSerialize(u8, data)
 local deserialized = byteWorks.resultExcludingCursor(u8, buff, 0)
 ```
 Some types need to be created by passing in parameters, for example array expects the type and a number indicating how many bytes should be allocated to store the number of entries:
