@@ -24,5 +24,5 @@ local data = {
 	}
 }
 
-local buff = byteWorks.createAndSerialize(struct, 0, data)
+local buff = byteWorks.createAndSerialize(struct, data)
 local deserialized = byteWorks.resultExcludingCursor(struct, buff, 0)
