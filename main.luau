@@ -1,8 +1,8 @@
 --!native
 --!strict
+--optimize 2
 
 local ByteWorks = {}
---writef16 and readf16 taken from Blink by Axen ngl
 
 export type ByteWorksType<T...> = {
 	ser: (buff: buffer, offset: number, T...) -> number,
@@ -62,46 +62,64 @@ local function readi53(buff: buffer, offset: number): number
 end
 
 local function writef16(buff: buffer, offset: number, value: number): ()
-	if value > 65504 then
-		buffer.writeu16(buff, offset, 0b0_11111_0000000000)
-	elseif value < -65504 then
-		buffer.writeu16(buff, offset, 0b1_11111_0000000000)
+	if value ~= value then
+		buffer.writeu16(buff, offset, 0x7E01)
+		return
 	elseif value == 0 then
-		buffer.writeu16(buff, offset, 0)
-	elseif value ~= value then
-		buffer.writeu16(buff, offset, 0b1_11111_0000000001)
-	else
-		local sign = 0
-		if value < 0 then
-			sign = 0x8000
-			value = -value
-		end
-
-		local fraction, exponent = math.frexp(value)
-		buffer.writeu16(buff, offset, bit32.bor(
-			sign, 
-			bit32.bor(
-				bit32.lshift(exponent + 14, 10),
-				((fraction * 2 - 1) * 1024) // 1)
-			)
-		)
+		buffer.writeu16(buff, offset, 0x0000)
+		return
 	end
+
+	local sign = 0
+	if value < 0 then
+		sign = 0x8000
+		value = -value
+	end
+
+	if value > 65504 then
+		buffer.writeu16(buff, offset, bit32.bor(sign, 0x7C00))
+		return
+	end
+
+	local fraction, exponent = math.frexp(value)
+	exponent = exponent - 1
+
+	if exponent < -14 then --subnormal number
+		fraction = fraction * math.ldexp(1, exponent + 14)
+		exponent = 0
+	else
+		exponent = exponent + 15
+		fraction = (fraction * 2 - 1)
+	end
+
+	buffer.writeu16(buff, offset, bit32.bor(
+		sign,
+		bit32.lshift(exponent, 10),
+		(fraction * 1024) // 1
+	))
 end
 
 local function readf16(buff: buffer, offset: number): number
 	local value = buffer.readu16(buff, offset)
-	if value == 0b0_11111_0000000000 then
-		return math.huge
-	elseif value == 0b1_11111_0000000000 then
-		return -math.huge
-	elseif value == 0b0_00000_0000000000 then
-		return 0
-	else
-		local sign = bit32.band(value, 0x8000) ~= 0 and -1 or 1
-		local exponent = bit32.rshift(bit32.band(value, 0x7C00), 10) - 15
-		local mantissa = 1 + (bit32.band(value, 0x03FF) / 1024)
 
-		return sign * math.ldexp(mantissa, exponent)
+	if value == 0 then
+		return (bit32.band(value, 0x8000) ~= 0) and -0 or 0
+	elseif value == 0x7C00 then
+		return math.huge
+	elseif value == 0xFC00 then
+		return -math.huge
+	elseif (bit32.band(value, 0x7C00) == 0x7C00) and (bit32.band(value, 0x03FF) ~= 0) then
+		return 0/0
+	end
+
+	local sign = bit32.band(value, 0x8000) ~= 0 and -1 or 1
+	local exponent = bit32.rshift(bit32.band(value, 0x7C00), 10)
+	local fraction = bit32.band(value, 0x03FF) / 1024
+
+	if exponent == 0 then
+		return sign * math.ldexp(fraction, -14)
+	else
+		return sign * math.ldexp(1 + fraction, exponent - 15)
 	end
 end
 
@@ -154,7 +172,6 @@ ByteWorks.u32 = table.freeze({
 		return 4
 	end,
 }) :: ByteWorksType<number>
-
 ByteWorks.u53 = table.freeze({
 	ser = function(buff, offset, value)
 		writeu53(buff, offset, value)
@@ -337,8 +354,12 @@ ByteWorks.svlq = table.freeze({
 			result = bit32.bor(result, bit32.lshift(bit32.band(byte, 0x7F), shift))
 			shift += 7
 		until bit32.band(byte, 0x80) == 0
-
-		return offset, bit32.arshift(result, 1) * -(bit32.band(result, 1))
+		
+		local decoded = bit32.arshift(result, 1)
+		if bit32.band(result, 1) ~= 0 then 
+			decoded = -decoded - 1
+		end
+		return offset, decoded
 	end,
 	size = function(value)
 		local zigzagValue = bit32.bxor(bit32.lshift(value, 1), bit32.arshift(value, 31))
@@ -387,12 +408,12 @@ ByteWorks.vstring = table.freeze({
 }) :: ByteWorksType<string>
 
 function ByteWorks.bitmask(bitCount: number): ByteWorksType<{boolean}>
-	local byteCount: number = math.ceil(bitCount / 8)
+	local byteCount = math.ceil(bitCount / 8)
 	return table.freeze({
 		ser = function(buff, offset: number, value)
-			for i: number = 0, byteCount - 1 do
-				local num: number = 0
-				for j: number, bool: boolean in value do
+			for i = 0, byteCount - 1 do
+				local num = 0
+				for j, bool in value do
 					num += bit32.lshift(bool and 1 or 0, j - 1)
 				end
 				buffer.writeu8(buff, offset + i, num)
@@ -416,27 +437,20 @@ function ByteWorks.bitmask(bitCount: number): ByteWorksType<{boolean}>
 end
 
 function ByteWorks.vector3(serDesType: ByteWorksType<number>): ByteWorksType<Vector3>
-	local size = serDesType.size(0)
-	local totalSize: number = size * 3
+	local totalSize = serDesType.size(0) * 3
 
 	return table.freeze({
 		ser = function(buff, offset, value: Vector3)
-			serDesType.ser(buff, offset, value.X)
-			offset += size
-			serDesType.ser(buff, offset, value.Y)
-			offset += size
-			serDesType.ser(buff, offset, value.Z)
-			offset += size
+			offset = serDesType.ser(buff, offset, value.X)
+			offset = serDesType.ser(buff, offset, value.Y)
+			offset = serDesType.ser(buff, offset, value.Z)
 			return offset
 		end,
 		des = function(buff, offset: number)
-			local _, x = serDesType.des(buff, offset)
-			offset += size
-			local _, y = serDesType.des(buff, offset)
-			offset += size
-			local _, z = serDesType.des(buff, offset)
-			offset += size
-
+			local x, y, z
+			offset, x = serDesType.des(buff, offset)
+			offset, y = serDesType.des(buff, offset)
+			offset, z = serDesType.des(buff, offset)
 			return offset, Vector3.new(x, y, z)
 		end,
 		size = function(value)
@@ -452,8 +466,7 @@ ByteWorks.color3 = table.freeze({
 		writef16(buff, offset, value.G)
 		offset += 2
 		writef16(buff, offset, value.B)
-		offset += 2
-		return offset
+		return offset + 2
 	end,
 	des = function(buff, offset: number)
 		return offset + 6, Color3.new(
@@ -475,8 +488,8 @@ ByteWorks.cframe = table.freeze({
 		offset += 4
 		buffer.writef32(buff, offset, value.Z)
 		offset += 4
-
-		local rotX: number, rotY: number, rotZ: number = value:ToOrientation()
+		
+		local rotX, rotY, rotZ = value:ToOrientation()
 		writef16(buff, offset, rotX)
 		offset += 2
 		writef16(buff, offset, rotY)
@@ -488,18 +501,18 @@ ByteWorks.cframe = table.freeze({
 	end,
 
 	des = function(buff, offset)
-		local posX: number = buffer.readf32(buff, offset)
+		local posX = buffer.readf32(buff, offset)
 		offset += 4
-		local posY: number = buffer.readf32(buff, offset)
+		local posY = buffer.readf32(buff, offset)
 		offset += 4
-		local posZ: number = buffer.readf32(buff, offset)
+		local posZ = buffer.readf32(buff, offset)
 		offset += 4
-
-		local rotX: number = readf16(buff, offset)
+		
+		local rotX = readf16(buff, offset)
 		offset += 2
-		local rotY: number = readf16(buff, offset)
+		local rotY = readf16(buff, offset)
 		offset += 2
-		local rotZ: number = readf16(buff, offset)
+		local rotZ = readf16(buff, offset)
 		offset += 2
 
 		return offset, CFrame.new(posX, posY, posZ) * CFrame.fromOrientation(rotX, rotY, rotZ)
@@ -511,39 +524,40 @@ ByteWorks.cframe = table.freeze({
 }) :: ByteWorksType<CFrame>
 
 function ByteWorks.bitfield(serDesType: ByteWorksType<number>, bitCounts: {number}): ByteWorksType<{number}>
-	local size: number = serDesType.size(0)
-	local sizeInBits: number = size * 8
+	local size = serDesType.size(0)
+	local sizeInBits = size * 8
+	local totalEntries = #bitCounts
 	local masks: {number} = {}
 
-	for i: number, bitCount: number in bitCounts do
+	for i, bitCount in bitCounts do
 		masks[i] = bit32.lshift(1, bitCount) - 1
 	end
 
 	return table.freeze({
 		ser = function(buff, offset, value)
-			local packedValue: number = 0
-			local curentBitPosition: number = sizeInBits
+			local packedValue = 0
+			local curentBitPosition = sizeInBits
 
-			for i: number, bitCount: number in bitCounts do
+			for i, bitCount in bitCounts do
 				curentBitPosition -= bitCount
 				packedValue = bit32.bor(packedValue, bit32.lshift(value[i], curentBitPosition))
 			end
 
-			serDesType.ser(buff, offset, packedValue)
-			return offset + size
+			return serDesType.ser(buff, offset, packedValue)
 		end,
 		des = function(buff, offset)
-			local _, packedValue: number = serDesType.des(buff, offset)
-			local currentBitPosition: number = sizeInBits
-			local values: {number} = {}
+			local packedValue
+			offset, packedValue = serDesType.des(buff, offset)
+			local currentBitPosition = sizeInBits
+			local values: {number} = table.create(totalEntries)
 
-			for i: number, bitCount: number in bitCounts do
+			for i, bitCount in bitCounts do
 				currentBitPosition -= bitCount
-				local value: number = bit32.rshift(packedValue, currentBitPosition)
+				local value = bit32.rshift(packedValue, currentBitPosition)
 				values[i] = bit32.band(value, masks[i])
 			end
 
-			return offset + size, values
+			return offset, values
 		end,
 		size = function(value)
 			return size
@@ -571,7 +585,7 @@ end
 ByteWorks.vbuffer = table.freeze({
 	ser = function(buff, offset, value)
 		local size = buffer.len(value)
-		local offset = ByteWorks.vlq.ser(buff, offset, size)
+		offset = ByteWorks.vlq.ser(buff, offset, size)
 		buffer.copy(buff, offset, value, 0, size)
 		return offset + size
 	end,
@@ -605,7 +619,7 @@ function ByteWorks.tupleIOToTable(serDesType: ByteWorksType<...any>): ByteWorksT
 		end,
 		des = function(buff, offset)
 			local result: {any} & {n: number | nil} = table.pack(serDesType.des(buff, offset))
-			local cursor: number = table.remove(result, 1) :: number
+			local cursor = table.remove(result, 1) :: number
 			result.n = nil --get outta here!!!
 			return cursor, result
 		end,
@@ -620,33 +634,31 @@ function ByteWorks.tableIOToTuple(serDesType: ByteWorksType<any>): ByteWorksType
 			return serDesType.ser(buff, offset, {...})
 		end,
 		des = function(buff, offset)
-			local cursor: number, result: any = serDesType.des(buff, offset)
+			local cursor, result = serDesType.des(buff, offset)
 			return cursor, table.unpack(result)
 		end,
 		size = serDesType.size
 	})
 end
 
-function ByteWorks.tuple(...: ByteWorksType<any>): ByteWorksType<any>
+function ByteWorks.tuple(...: ByteWorksType<any>): ByteWorksType<...any>
 	local types: {ByteWorksType<any>} = {...}
 	return table.freeze({
 		ser = function(buff, offset, ...)
-			local cursor: number = offset
-			for i: number, value: any in {...} do
-				cursor = types[i].ser(buff, cursor, value)
+			for i, value in {...} do
+				offset = types[i].ser(buff, offset, value)
 			end
-			return cursor
+			return offset
 		end,
 		des = function(buff, offset)
-			local cursor: number = offset
 			local result: {any} = {}
-			for i: number, serDesType: ByteWorksType<any> in types do
-				cursor, result[i] = serDesType.des(buff, cursor)
+			for i, serDesType in types do
+				offset, result[i] = serDesType.des(buff, offset)
 			end
-			return cursor, table.unpack(result)
+			return offset, table.unpack(result)
 		end,
 		size = function(...)
-			local totalSize: number = 0
+			local totalSize = 0
 			for i, value in {...} do
 				totalSize += types[i].size(value)
 			end
@@ -655,72 +667,22 @@ function ByteWorks.tuple(...: ByteWorksType<any>): ByteWorksType<any>
 	})
 end
 
-function ByteWorks.literal<T>(...: T): ByteWorksType<T>
-	local enums: {T} = {...}
-	if #enums > 255 then --dont shout at me for not making use of index 0
-		error("cannot have more than 255 literals")
+function ByteWorks.literal(...: any): ByteWorksType<any>
+	local literals = {...}
+	if #literals > 255 then
+		error("only up to 256 literals are supported")
 	end
 
 	return table.freeze({
 		ser = function(buff, offset, value)
-			buffer.writeu8(buff, offset, table.find(enums, value) :: number)
+			buffer.writeu8(buff, offset, table.find(literals, value) :: number - 1)
 			return offset + 1
 		end,
 		des = function(buff, offset: number)
-			return offset + 1, enums[buffer.readu8(buff, offset)]
+			return offset + 1, literals[buffer.readu8(buff, offset) + 1]
 		end,
 		size = function()
 			return 1
-		end,
-	})
-end
-
-function ByteWorks.taggedEnum(enums: {[any]: ByteWorksType<any>}): ByteWorksType<any>
-	local enumsAsInts = {}
-	local n = 1
-	for enum in enums do
-		enumsAsInts[n] = enum
-		n += 1
-	end
-
-	return table.freeze({
-		ser = function(buff, offset: number, value)
-			local startOffset = offset
-			offset += 1
-
-			local totalCount = 0
-			for key, realValue in value do
-				local position = table.find(enumsAsInts, key) :: number
-				buffer.writeu8(buff, offset, position)
-				offset = enums[key].ser(buff, offset + 1, realValue)
-				totalCount += 1
-			end
-
-			buffer.writeu8(buff, startOffset, totalCount)
-			return offset
-		end,
-		des = function(buff, offset)
-			local totalCount = buffer.readu8(buff, offset)
-			offset += 1
-
-			local results = {}
-			for i = 1, totalCount do
-				local key = enumsAsInts[buffer.readu8(buff, offset)]
-				offset += 1
-
-				local value
-				offset, value = enums[key].des(buff, offset)
-				results[key] = value
-			end
-
-			return offset, results
-		end,
-		size = function(value)
-			local totalSize = 1
-			for key, realValue in value do
-				totalSize += enums[key].size(realValue) + 1
-			end
-			return totalSize
 		end,
 	})
 end
@@ -756,25 +718,23 @@ function ByteWorks.array<T>(serDesType: ByteWorksType<T>): ByteWorksType<{T}>
 	return table.freeze({
 		ser = function(buff, offset, value: {T})
 			offset = ByteWorks.vlq.ser(buff, offset, #value)
-			local cursor: number = offset
 
 			for _, element: T in value do
-				cursor = serDesType.ser(buff, cursor, element)
+				offset = serDesType.ser(buff, offset, element)
 			end
 
-			return cursor
+			return offset
 		end,
 		des = function(buff, offset)
-			local count: number
+			local count
 			offset, count = ByteWorks.vlq.des(buff, offset)
-			local cursor: number = offset
-			local elements: {T} = {}
+			local elements = table.create(count)
 
-			for i: number = 1, count do
-				cursor, elements[i] = serDesType.des(buff, cursor)
+			for i = 1, count do
+				offset, elements[i] = serDesType.des(buff, offset)
 			end
 
-			return cursor, elements
+			return offset, elements
 		end,
 		size = function(value)
 			return serDesType.size(value[1]) * #value + ByteWorks.vlq.size(#value)
@@ -786,23 +746,20 @@ end
 function ByteWorks.fixedSizeArray<T>(serDesType: ByteWorksType<T>, fixedSize: number): ByteWorksType<{T}>
 	return table.freeze({
 		ser = function(buff, offset, value)
-			local cursor: number = offset
-
-			for _, element: T in value do
-				cursor = serDesType.ser(buff, cursor, element)
+			for _, element in value do
+				offset = serDesType.ser(buff, offset, element)
 			end
 
-			return offset + fixedSize
+			return offset
 		end,
 		des = function(buff, offset)
-			local cursor = offset
-			local value = {}
+			local value = table.create(fixedSize)
 
 			for i = 1, fixedSize do
-				cursor, value[i] = serDesType.des(buff, cursor)
+				offset, value[i] = serDesType.des(buff, offset)
 			end
 
-			return offset + fixedSize, value
+			return offset, value
 		end,
 		size = function(value)
 			return serDesType.size(value[1]) * fixedSize
@@ -811,38 +768,35 @@ function ByteWorks.fixedSizeArray<T>(serDesType: ByteWorksType<T>, fixedSize: nu
 end
 
 function ByteWorks.struct(fields: {[string]: ByteWorksType<any>}): ByteWorksType<{[string]: any}>
-	local order: {string} = {}
-	for field: string in fields do
+	local order = {}
+	for field in fields do
 		table.insert(order, field)
 	end
 
 	return table.freeze({
 		ser = function(buff, offset, value)
-			local cursor: number = offset
-
-			for _, field: string in order do
-				local serDesType: ByteWorksType<any> = fields[field]
-				cursor = serDesType.ser(buff, cursor, value[field])
+			for _, field in order do
+				local serDesType= fields[field]
+				offset = serDesType.ser(buff, offset, value[field])
 			end
 
-			return cursor
+			return offset
 		end,
 		des = function(buff, offset)
-			local cursor: number = offset
-			local elements: {[string]: any} = {}
-
-			for _, field: string in order do
-				local serDesType: ByteWorksType<any> = fields[field]
-				cursor, elements[field] = serDesType.des(buff, cursor)
-			end
-
-			return cursor, elements
-		end,
-		size = function(value)
-			local totalSize: number = 0
+			local elements = {}
 
 			for _, field in order do
-				local serDesType: ByteWorksType<any> = fields[field]
+				local serDesType = fields[field]
+				offset, elements[field] = serDesType.des(buff, offset)
+			end
+
+			return offset, elements
+		end,
+		size = function(value)
+			local totalSize = 0
+
+			for _, field in order do
+				local serDesType = fields[field]
 				totalSize += serDesType.size(value[field])
 			end
 
@@ -852,11 +806,11 @@ function ByteWorks.struct(fields: {[string]: ByteWorksType<any>}): ByteWorksType
 end
 
 function ByteWorks.optionalStruct(fields: {[string]: ByteWorksType<any>}): ByteWorksType<{[string]: any}>
-	local order: {string} = {}
-	local optionalFields: {string} = {}
-	local optionalCount: number = 0
+	local order = {}
+	local optionalFields = {}
+	local optionalCount = 0
 
-	for fieldName: string, field: ByteWorksType<any> in fields do
+	for fieldName, field in fields do
 		table.insert(order, fieldName)
 		if field.optionalFlag then
 			table.insert(optionalFields, fieldName)
@@ -868,62 +822,62 @@ function ByteWorks.optionalStruct(fields: {[string]: ByteWorksType<any>}): ByteW
 		warn("using optional struct with no optionals is slower than just using a struct")
 	end
 
-	local optionalBytes: number = math.ceil(optionalCount / 8)
+	local optionalBytes = math.ceil(optionalCount / 8)
 	return table.freeze({
 		ser = function(buff, offset: number, value)
-			local bitmap: number = 0
-			local cursor: number = offset + optionalBytes
+			local bitmap = 0
 
-			for i: number, fieldName: string in optionalFields do
+			for i, fieldName in optionalFields do
 				if value[fieldName] ~= nil then
 					bitmap = bit32.bor(bitmap, bit32.lshift(1, i - 1))
 				end
 			end
 
-			for i: number = 1, optionalBytes do
+			for i = 1, optionalBytes do
 				buffer.writeu8(buff, offset + i - 1, bit32.band(bit32.rshift(bitmap, (i - 1) * 8), 0xFF))
+				offset += 1
 			end
 
-			for _, fieldName: string in order do
-				local serDesType: ByteWorksType<any> = fields[fieldName]
+			for _, fieldName in order do
+				local serDesType = fields[fieldName]
 				if not serDesType.optionalFlag or value[fieldName] ~= nil then
-					cursor = serDesType.ser(buff, cursor, value[fieldName])
+					offset = serDesType.ser(buff, offset, value[fieldName])
 				end
 			end
 
-			return cursor
+			return offset
 		end,
 
 		des = function(buff, offset: number)
-			local cursor: number = offset + optionalBytes
-			local elements: {[string]: any} = {}
+			local elements = {}
 
-			local bitmap: number = 0
-			for i: number = optionalBytes, 1, -1 do
+			local bitmap = 0
+			for i = optionalBytes, 1, -1 do
 				bitmap = bit32.bor(bit32.lshift(bitmap, 8), buffer.readu8(buff, offset + i - 1))
+				offset += 1
 			end
 
-			local optionalIndex: number = 0
-			for _, fieldName: string in order do
-				local serDesType: ByteWorksType<any> = fields[fieldName]
+			local optionalIndex = 0
+			for _, fieldName in order do
+				local serDesType = fields[fieldName]
 				if serDesType.optionalFlag then
 					optionalIndex += 1
 					if bit32.band(bitmap, bit32.lshift(1, optionalIndex - 1)) ~= 0 then
-						cursor, elements[fieldName] = serDesType.des(buff, cursor)
+						offset, elements[fieldName] = serDesType.des(buff, offset)
 					end
 				else
-					cursor, elements[fieldName] = serDesType.des(buff, cursor)
+					offset, elements[fieldName] = serDesType.des(buff, offset)
 				end
 			end
 
-			return cursor, elements
+			return offset, elements
 		end,
 
 		size = function(value)
-			local totalSize: number = optionalBytes
+			local totalSize = optionalBytes
 
-			for _, fieldName: string in order do
-				local serDesType: ByteWorksType<any> = fields[fieldName]
+			for _, fieldName in order do
+				local serDesType = fields[fieldName]
 				if not serDesType.optionalFlag or value[fieldName] ~= nil then
 					totalSize += serDesType.size(value[fieldName])
 				end
@@ -936,35 +890,37 @@ end
 
 function ByteWorks.map<K, V>(keyType: ByteWorksType<K>, valueType: ByteWorksType<V>): ByteWorksType<{[K]: V}>
 	return table.freeze({
-		ser = function(buff, offset: number, value)
-			local cursor: number = offset + 1
-			local elementCount: number = 0
-			for k: K, v: V in value do
-				cursor = keyType.ser(buff, cursor, k)
-				cursor = valueType.ser(buff, cursor, v)
+		ser = function(buff, offset: number, value: {[K]: V})
+			local writeAt = offset
+			offset += 1
+
+			local elementCount = 0
+			for k, v in value do
+				offset = keyType.ser(buff, offset, k)
+				offset = valueType.ser(buff, offset, v)
 				elementCount += 1
 			end
 
-			buffer.writeu8(buff, offset, elementCount)
-			return cursor
+			buffer.writeu8(buff, writeAt, elementCount)
+			return offset
 		end,
 		des = function(buff, offset)
-			local elementCount: number = buffer.readu8(buff, offset)
-			local cursor: number = offset + 1
+			local elementCount = buffer.readu8(buff, offset)
+			offset += 1
 
 			local map: {[K]: V} = {}
-			for i: number = 1, elementCount do
-				local key: K, value: V
-				cursor, key = keyType.des(buff, cursor)
-				cursor, value = valueType.des(buff, cursor)
+			for i = 1, elementCount do
+				local key, value
+				offset, key = keyType.des(buff, offset)
+				offset, value = valueType.des(buff, offset)
 				map[key] = value
 			end
 
-			return cursor, map
+			return offset, map
 		end,
 		size = function(value)
-			local totalSize: number = 0
-			for k: K, v: V in value do
+			local totalSize = 0
+			for k, v in value do
 				totalSize += keyType.size(k) + valueType.size(v)
 			end
 			return totalSize + 1
@@ -990,6 +946,64 @@ function ByteWorks.createAndSerialize<T>(serDesType: ByteWorksType<T>, ...: T): 
 	local buff: buffer = buffer.create(serDesType.size(...))
 	serDesType.ser(buff, 0, ...)
 	return buff
+end
+
+local function readf16b(buff: buffer, offset: number): number
+	local encoded: number = buffer.readu16(buff, offset)
+	local mantissaExponent: number = encoded % 0x8000
+
+	local value: number
+	if mantissaExponent == 0b0_11111_0000000000 then
+		if encoded // 0x8000 == 1 then
+			value = -math.huge
+		else
+			value = math.huge
+		end
+	elseif mantissaExponent == 0b1_11111_0000000000 or mantissaExponent == 0b0_00000_0000000000 then
+		value = 0
+	else
+		local mantissa: number = mantissaExponent % 0x400
+		local exponent: number = mantissaExponent // 0x400
+		local fraction: number
+
+		if exponent == 0 then
+			fraction = mantissa / 0x400
+		else
+			fraction = mantissa / 0x800 + 0.5
+		end
+
+		local result: number = math.ldexp(fraction, exponent - 14)
+		return if encoded // 0x8000 == 1 then -result else result
+	end
+
+	return value
+end
+
+local function writef16b(buff, offset, value)
+	if value > 65504 then
+		buffer.writeu16(buff, offset, 0b0_11111_0000000000)
+	elseif value < -65504 then
+		buffer.writeu16(buff, offset, 0b1_11111_0000000000)
+	elseif value == 0 then
+		buffer.writeu16(buff, offset, 0)
+	elseif value ~= value then
+		buffer.writeu16(buff, offset, 0b1_11111_0000000001)
+	else
+		local float: number = value
+		local absolute: number = math.abs(float)
+		local interval: number = math.ldexp(1, math.floor(math.log(absolute, 2)) - 10)
+		local roundedValue: number = (absolute // interval) * interval
+		local fraction: number, exponent: number = math.frexp(roundedValue)
+
+		exponent += 14
+		local mantissa: number = math.round(if exponent <= 0
+			then fraction * 0x400 / math.ldexp(1, math.abs(exponent))
+			else fraction * 0x800) % 0x400
+		local result: number = mantissa
+			+ math.max(exponent, 0) * 0x400
+			+ if float < 0 then 0x8000 else 0
+		buffer.writeu16(buff, offset, result)
+	end
 end
 
 return ByteWorks
