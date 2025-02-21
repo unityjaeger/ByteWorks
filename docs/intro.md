@@ -15,5 +15,5 @@ ByteWorks is a library that aims to make working with buffers as comfortable as 
 ## Who Is ByteWorks For?
 
 ByteWorks is for **any Roblox developer** who needs to work with binary data. Whether you're:
-- Building a **multiplayer game** and need to send data over the network efficiently,
+- Building a **complex multiplayer game** and need to send data over the network efficiently,
 - Saving **game state** or player data in a compact format,
