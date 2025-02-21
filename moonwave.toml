@@ -1,0 +1,27 @@
+title = "ByteWorks"  # From Git
+gitRepoUrl = "https://github.com/unityjaeger/ByteWorks" # From Git
+
+gitSourceBranch = "main"
+changelog = false
+
+[home]
+enabled = true
+includeReadme = false
+
+[[home.features]]
+title = "Why ByteWorks?"
+description = "Working with binary data in Roblox can be challenging. Whether you're sending data over the network, or optimizing storage, handling binary formats manually is error-prone and time-consuming."
+
+[[home.features]]
+title = "Optimized"
+description = "Serializers were designed to be easy to use, flexible, and performant."
+
+[[home.features]]
+title = "Modular and Composable"
+description = "ByteWorks is designed with modularity in mind. Compose serializers to handle even the most complex data structures, making it perfect for advanced use cases."
+
+# From git:
+organizationName = "unityjaeger"
+projectName = "ByteWorks"
+url = "https://github.com/unityjaeger"
+baseUrl = "/ByteWorks/"
