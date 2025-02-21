@@ -31,7 +31,7 @@ For more control and performance, you can use the ser, des, and size methods dir
 local u16Type = ByteWorks.u16
 
 --create a buffer with enough space for that type
---for u16, the size is constant so the parameter is optional, however if you use strict then you still want to pass in the value because of how the type works
+--for u16, the size is constant so the parameter is optional, however if you use strict then you still want to pass in the value because the luau type system expects a parameter
 local buff = buffer.create(u16Type.size(42))
 
 --serialize the number
