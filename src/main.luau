@@ -82,38 +82,37 @@ local function writef16(buff: buffer, offset: number, value: number): ()
 	end
 
 	local fraction, exponent = math.frexp(value)
-	exponent = exponent - 1
-
-	if exponent < -14 then --subnormal number
-		fraction = fraction * math.ldexp(1, exponent + 14)
+	if exponent < -13 then
+		fraction = fraction * math.ldexp(1, exponent + 13)
 		exponent = 0
 	else
-		exponent = exponent + 15
+		exponent = exponent + 14
 		fraction = (fraction * 2 - 1)
 	end
 
 	buffer.writeu16(buff, offset, bit32.bor(
 		sign,
 		bit32.lshift(exponent, 10),
-		(fraction * 1024) // 1
+		fraction * 1024
 	))
 end
 
 local function readf16(buff: buffer, offset: number): number
 	local value = buffer.readu16(buff, offset)
-
+	
+	local banded = bit32.band(value, 0x7C00)
 	if value == 0 then
 		return (bit32.band(value, 0x8000) ~= 0) and -0 or 0
 	elseif value == 0x7C00 then
 		return math.huge
 	elseif value == 0xFC00 then
 		return -math.huge
-	elseif (bit32.band(value, 0x7C00) == 0x7C00) and (bit32.band(value, 0x03FF) ~= 0) then
+	elseif (banded == 0x7C00) and (bit32.band(value, 0x03FF) ~= 0) then
 		return 0/0
 	end
 
-	local sign = bit32.band(value, 0x8000) ~= 0 and -1 or 1
-	local exponent = bit32.rshift(bit32.band(value, 0x7C00), 10)
+	local sign = bit32.band(value, 0x8000) == 0 and 1 or -1
+	local exponent = bit32.rshift(banded, 10)
 	local fraction = bit32.band(value, 0x03FF) / 1024
 
 	if exponent == 0 then
