@@ -94,12 +94,12 @@ local function writef16(buff: buffer, offset: number, value: number): ()
 		sign,
 		bit32.lshift(exponent, 10),
 		fraction * 1024
-	))
+		))
 end
 
 local function readf16(buff: buffer, offset: number): number
 	local value = buffer.readu16(buff, offset)
-	
+
 	local banded = bit32.band(value, 0x7C00)
 	if value == 0 then
 		return (bit32.band(value, 0x8000) ~= 0) and -0 or 0
@@ -353,7 +353,7 @@ ByteWorks.svlq = table.freeze({
 			result = bit32.bor(result, bit32.lshift(bit32.band(byte, 0x7F), shift))
 			shift += 7
 		until bit32.band(byte, 0x80) == 0
-		
+
 		local decoded = bit32.arshift(result, 1)
 		if bit32.band(result, 1) ~= 0 then 
 			decoded = -decoded - 1
@@ -472,7 +472,7 @@ ByteWorks.cframe = table.freeze({
 		offset += 4
 		buffer.writef32(buff, offset, value.Z)
 		offset += 4
-		
+
 		local rotX, rotY, rotZ = value:ToOrientation()
 		writef16(buff, offset, rotX)
 		offset += 2
@@ -491,7 +491,7 @@ ByteWorks.cframe = table.freeze({
 		offset += 4
 		local posZ = buffer.readf32(buff, offset)
 		offset += 4
-		
+
 		local rotX = readf16(buff, offset)
 		offset += 2
 		local rotY = readf16(buff, offset)
@@ -721,7 +721,11 @@ function ByteWorks.array<T>(serDesType: ByteWorksType<T>): ByteWorksType<{T}>
 			return offset, elements
 		end,
 		size = function(value)
-			return serDesType.size(value[1]) * #value + ByteWorks.vlq.size(#value)
+			local totalSize = ByteWorks.vlq.size(#value)
+			for _, v in value do
+				totalSize += serDesType.size(v :: T)
+			end
+			return totalSize
 		end,
 	})
 end
@@ -746,7 +750,11 @@ function ByteWorks.fixedSizeArray<T>(serDesType: ByteWorksType<T>, fixedSize: nu
 			return offset, value
 		end,
 		size = function(value)
-			return serDesType.size(value[1]) * fixedSize
+			local totalSize = 0
+			for _, v in value do
+				totalSize += serDesType.size(v)
+			end
+			return totalSize
 		end,
 	})
 end
