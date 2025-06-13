@@ -97,29 +97,41 @@ local function writef16(buff: buffer, offset: number, value: number): ()
 		))
 end
 
-local function readf16(buff: buffer, offset: number): number
-	local value = buffer.readu16(buff, offset)
-
-	local banded = bit32.band(value, 0x7C00)
-	if value == 0 then
-		return (bit32.band(value, 0x8000) ~= 0) and -0 or 0
-	elseif value == 0x7C00 then
-		return math.huge
-	elseif value == 0xFC00 then
-		return -math.huge
-	elseif (banded == 0x7C00) and (bit32.band(value, 0x03FF) ~= 0) then
-		return 0/0
+-- approx. 1MB memory cost
+local f16_constant_lookup = {}
+for encoded = 0, 2^16-1 do
+	local banded = bit32.band(encoded, 0x7C00)
+	if encoded == 0 then
+		f16_constant_lookup[encoded] = (bit32.band(encoded, 0x8000) ~= 0) and -0 or 0
+		continue
+	elseif encoded == 0x7C00 then
+		f16_constant_lookup[encoded] = math.huge
+		continue
+	elseif encoded == 0xFC00 then
+		f16_constant_lookup[encoded] = -math.huge
+		continue
+	elseif (banded == 0x7C00) and (bit32.band(encoded, 0x03FF) ~= 0) then
+		f16_constant_lookup[encoded] = 0/0
+		continue
 	end
 
-	local sign = bit32.band(value, 0x8000) == 0 and 1 or -1
+	local sign = bit32.band(encoded, 0x8000) == 0 and 1 or -1
 	local exponent = bit32.rshift(banded, 10)
-	local fraction = bit32.band(value, 0x03FF) / 1024
+	local fraction = bit32.band(encoded, 0x03FF) / 1024
 
 	if exponent == 0 then
-		return sign * math.ldexp(fraction, -14)
+		f16_constant_lookup[encoded] = sign * math.ldexp(fraction, -14)
+		continue
 	else
-		return sign * math.ldexp(1 + fraction, exponent - 15)
+		f16_constant_lookup[encoded] = sign * math.ldexp(1 + fraction, exponent - 15)
+		continue
 	end
+end
+
+local function readf16(buff: buffer, offset: number): number
+	local encoded = buffer.readu16(buff, offset)
+
+	return f16_constant_lookup[encoded]
 end
 
 --unsigned integers
