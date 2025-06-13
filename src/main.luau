@@ -842,7 +842,8 @@ function ByteWorks.optStruct(fields: {[string]: ByteWorksType<any>}): ByteWorksT
 		end,
 
 		des = function(buff, offset: number)
-			local elements = {}
+			-- perf; cloning the fields preallocates indices, significantly improving deserialization times.
+			local elements = table.clone(fields)
 
 			local bitmap = 0
 			for i = optionalBytes, 1, -1 do
