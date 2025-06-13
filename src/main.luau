@@ -97,8 +97,8 @@ local function writef16(buff: buffer, offset: number, value: number): ()
 		))
 end
 
--- approx. 1MB memory cost
-local f16_constant_lookup = {}
+-- approx. 1MB memory cost assuming 16 bytes per index
+local f16_constant_lookup = table.create(2^16-1)
 for encoded = 0, 2^16-1 do
 	local banded = bit32.band(encoded, 0x7C00)
 	if encoded == 0 then
