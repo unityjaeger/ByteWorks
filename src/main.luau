@@ -13,50 +13,50 @@ export type ByteWorksType<T...> = {
 
 local function writei24(buff: buffer, offset: number, value: number): ()
 	if value < 0 then
-		value = value + 16777216
+		value = value + 2^24
 	end
-	buffer.writeu16(buff, offset, value / 256)
-	buffer.writeu8(buff, offset + 2, value % 256)
+	buffer.writeu16(buff, offset, value / 2^8)
+	buffer.writeu8(buff, offset + 2, value % 2^8)
 end
 
 local function readi24(buff: buffer, offset: number): number
-	local value: number = 256 * buffer.readu16(buff, offset) + buffer.readu8(buff, offset + 2)
+	local value: number = 2^8 * buffer.readu16(buff, offset) + buffer.readu8(buff, offset + 2)
 	if value >= 8388608 then
-		return value - 16777216
+		return value - 2^24
 	end
 	return value
 end
 
 local function writeu24(buff: buffer, offset: number, value: number): ()
-	buffer.writeu16(buff, offset, value / 256)
+	buffer.writeu16(buff, offset, value / 2^8)
 	buffer.writeu8(buff, offset + 2, value)
 end
 
 local function readu24(buff: buffer, offset: number): number
-	return 256 * buffer.readu16(buff, offset) + buffer.readu8(buff, offset + 2)
+	return 2^8 * buffer.readu16(buff, offset) + buffer.readu8(buff, offset + 2)
 end
 
 local function writeu53(buff: buffer, offset: number, value: number): ()
-	buffer.writeu32(buff, offset, value / 16777216)
+	buffer.writeu32(buff, offset, value / 2^24)
 	writeu24(buff, offset + 4, value)
 end
 
 local function readu53(buff: buffer, offset: number): number
-	return 16777216 * buffer.readu32(buff, offset) + readu24(buff, offset + 4)
+	return 2^24 * buffer.readu32(buff, offset) + readu24(buff, offset + 4)
 end
 
 local function writei53(buff: buffer, offset: number, value: number): ()
 	if value < 0 then
 		value = value + 9007199254740992
 	end
-	buffer.writeu32(buff, offset, value / 16777216)
-	writeu24(buff, offset + 4, value % 16777216)
+	buffer.writeu32(buff, offset, value / 2^24)
+	writeu24(buff, offset + 4, value % 2^24)
 end
 
 local function readi53(buff: buffer, offset: number): number
-	local value: number = 16777216 * buffer.readu32(buff, offset) + readu24(buff, offset + 4)
-	if value >= 4503599627370496 then
-		value = value - 9007199254740992
+	local value: number = 2^24 * buffer.readu32(buff, offset) + readu24(buff, offset + 4)
+	if value >= 2^52 then
+		value = value - 2^53
 	end
 	return value
 end
