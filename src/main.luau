@@ -423,18 +423,21 @@ end
 function ByteWorks.vector3(serDesType: ByteWorksType<number>): ByteWorksType<Vector3>
 	local totalSize = serDesType.size(0) * 3
 
+	local innerSer = serDesType.ser
+	local innerDes = serDesType.des
+
 	return table.freeze({
 		ser = function(buff, offset, value: Vector3)
-			offset = serDesType.ser(buff, offset, value.X)
-			offset = serDesType.ser(buff, offset, value.Y)
-			offset = serDesType.ser(buff, offset, value.Z)
+			offset = innerSer(buff, offset, value.X)
+			offset = innerSer(buff, offset, value.Y)
+			offset = innerSer(buff, offset, value.Z)
 			return offset
 		end,
 		des = function(buff, offset: number)
 			local x, y, z
-			offset, x = serDesType.des(buff, offset)
-			offset, y = serDesType.des(buff, offset)
-			offset, z = serDesType.des(buff, offset)
+			offset, x = innerDes(buff, offset)
+			offset, y = innerDes(buff, offset)
+			offset, z = innerDes(buff, offset)
 			return offset, Vector3.new(x, y, z)
 		end,
 		size = function(value)
@@ -509,6 +512,8 @@ ByteWorks.cframe = table.freeze({
 
 function ByteWorks.bitfield(serDesType: ByteWorksType<number>, bitCounts: {number}): ByteWorksType<{number}>
 	local size = serDesType.size(0)
+	local innerSer = serDesType.ser
+	local innerDes = serDesType.des
 	local sizeInBits = size * 8
 	local totalEntries = #bitCounts
 	local masks: {number} = {}
@@ -527,11 +532,11 @@ function ByteWorks.bitfield(serDesType: ByteWorksType<number>, bitCounts: {numbe
 				packedValue = bit32.bor(packedValue, bit32.lshift(value[i], curentBitPosition))
 			end
 
-			return serDesType.ser(buff, offset, packedValue)
+			return innerSer(buff, offset, packedValue)
 		end,
 		des = function(buff, offset)
 			local packedValue
-			offset, packedValue = serDesType.des(buff, offset)
+			offset, packedValue = innerDes(buff, offset)
 			local currentBitPosition = sizeInBits
 			local values: {number} = table.create(totalEntries)
 
@@ -597,12 +602,14 @@ end
 --if you want optimal performance you should copy and modify the methods using tuples to natively use table I/O
 --boolean is a tuple so its easy to only use a single boolean without having it be a table filled with 7 other booleans defaulting to false (for stuff like {thing = true})
 function ByteWorks.tupleIOToTable(serDesType: ByteWorksType<...any>): ByteWorksType<any>
+	local innerSer = serDesType.ser
+	local innerDes = serDesType.des
 	return table.freeze({
 		ser = function(buff, offset, value)
-			return serDesType.ser(buff, offset, table.unpack(value))
+			return innerSer(buff, offset, table.unpack(value))
 		end,
 		des = function(buff, offset)
-			local result: {any} & {n: number | nil} = table.pack(serDesType.des(buff, offset))
+			local result: {any} & {n: number | nil} = table.pack(innerDes(buff, offset))
 			local cursor = table.remove(result, 1) :: number
 			result.n = nil --get outta here!!!
 			return cursor, result
@@ -613,12 +620,14 @@ end
 
 --why not
 function ByteWorks.tableIOToTuple(serDesType: ByteWorksType<any>): ByteWorksType<...any>
+	local innerSer = serDesType.ser
+	local innerDes = serDesType.des
 	return table.freeze({
 		ser = function(buff, offset, ...)
-			return serDesType.ser(buff, offset, {...})
+			return innerSer(buff, offset, {...})
 		end,
 		des = function(buff, offset)
-			local cursor, result = serDesType.des(buff, offset)
+			local cursor, result = innerDes(buff, offset)
 			return cursor, table.unpack(result)
 		end,
 		size = serDesType.size
@@ -681,14 +690,16 @@ function ByteWorks.enum(enum): ByteWorksType<any>
 
 	local numberType: ByteWorksType<number> = highestValue > 255 and ByteWorks.u16 or ByteWorks.u8
 	local size = numberType.size(0)
+	local numberTypeSer = numberType.ser
+	local numberTypeDes = numberType.des
 
 	return table.freeze({
 		ser = function(buff, offset, value: EnumItem)
-			return numberType.ser(buff, offset, value.Value)
+			return numberTypeSer(buff, offset, value.Value)
 		end,
 		des = function(buff, offset)
 			local value: number
-			offset, value = numberType.des(buff, offset)
+			offset, value = numberTypeDes(buff, offset)
 			local enumItem: EnumItem? = enum:FromValue(value)
 			return offset, enumItem
 		end,
@@ -699,31 +710,38 @@ function ByteWorks.enum(enum): ByteWorksType<any>
 end
 
 function ByteWorks.array<T>(serDesType: ByteWorksType<T>): ByteWorksType<{T}>
+	local vlqSer = ByteWorks.vlq.ser
+	local vlqDes = ByteWorks.vlq.des
+	local vlqSize = ByteWorks.vlq.size
+	local innerSer = serDesType.ser
+	local innerDes = serDesType.des
+	local innerSize = serDesType.size
+
 	return table.freeze({
 		ser = function(buff, offset, value: {T})
-			offset = ByteWorks.vlq.ser(buff, offset, #value)
+			offset = vlqSer(buff, offset, #value)
 
 			for _, element: T in value do
-				offset = serDesType.ser(buff, offset, element)
+				offset = innerSer(buff, offset, element)
 			end
 
 			return offset
 		end,
 		des = function(buff, offset)
 			local count
-			offset, count = ByteWorks.vlq.des(buff, offset)
+			offset, count = vlqDes(buff, offset)
 			local elements = table.create(count)
 
 			for i = 1, count do
-				offset, elements[i] = serDesType.des(buff, offset)
+				offset, elements[i] = innerDes(buff, offset)
 			end
 
 			return offset, elements
 		end,
 		size = function(value)
-			local totalSize = ByteWorks.vlq.size(#value)
+			local totalSize = vlqSize(#value)
 			for _, v in value do
-				totalSize += serDesType.size(v :: T)
+				totalSize += innerSize(v :: T)
 			end
 			return totalSize
 		end,
@@ -732,10 +750,14 @@ end
 
 --no size indicator overhead!!
 function ByteWorks.fixedSizeArray<T>(serDesType: ByteWorksType<T>, fixedSize: number): ByteWorksType<{T}>
+	local innerSer = serDesType.ser
+	local innerDes = serDesType.des
+	local innerSize = serDesType.size
+
 	return table.freeze({
 		ser = function(buff, offset, value)
 			for _, element in value do
-				offset = serDesType.ser(buff, offset, element)
+				offset = innerSer(buff, offset, element)
 			end
 
 			return offset
@@ -744,7 +766,7 @@ function ByteWorks.fixedSizeArray<T>(serDesType: ByteWorksType<T>, fixedSize: nu
 			local value = table.create(fixedSize)
 
 			for i = 1, fixedSize do
-				offset, value[i] = serDesType.des(buff, offset)
+				offset, value[i] = innerDes(buff, offset)
 			end
 
 			return offset, value
@@ -752,7 +774,7 @@ function ByteWorks.fixedSizeArray<T>(serDesType: ByteWorksType<T>, fixedSize: nu
 		size = function(value)
 			local totalSize = 0
 			for _, v in value do
-				totalSize += serDesType.size(v)
+				totalSize += innerSize(v)
 			end
 			return totalSize
 		end,
@@ -768,7 +790,7 @@ function ByteWorks.struct(fields: {[string]: ByteWorksType<any>}): ByteWorksType
 	return table.freeze({
 		ser = function(buff, offset, value)
 			for _, field in order do
-				local serDesType= fields[field]
+				local serDesType = fields[field]
 				offset = serDesType.ser(buff, offset, value[field])
 			end
 
@@ -881,6 +903,13 @@ function ByteWorks.optStruct(fields: {[string]: ByteWorksType<any>}): ByteWorksT
 end
 
 function ByteWorks.map<K, V>(keyType: ByteWorksType<K>, valueType: ByteWorksType<V>): ByteWorksType<{[K]: V}>
+	local keySer = keyType.ser
+	local keyDes = keyType.des
+	local keySize = keyType.size
+	local valueSer = valueType.ser
+	local valueDes = valueType.des
+	local valueSize = valueType.size
+
 	return table.freeze({
 		ser = function(buff, offset: number, value: {[K]: V})
 			local writeAt = offset
@@ -888,8 +917,8 @@ function ByteWorks.map<K, V>(keyType: ByteWorksType<K>, valueType: ByteWorksType
 
 			local elementCount = 0
 			for k, v in value do
-				offset = keyType.ser(buff, offset, k)
-				offset = valueType.ser(buff, offset, v)
+				offset = keySer(buff, offset, k)
+				offset = valueSer(buff, offset, v)
 				elementCount += 1
 			end
 
@@ -903,8 +932,8 @@ function ByteWorks.map<K, V>(keyType: ByteWorksType<K>, valueType: ByteWorksType
 			local map: {[K]: V} = {}
 			for i = 1, elementCount do
 				local key, value
-				offset, key = keyType.des(buff, offset)
-				offset, value = valueType.des(buff, offset)
+				offset, key = keyDes(buff, offset)
+				offset, value = valueDes(buff, offset)
 				map[key] = value
 			end
 
@@ -913,7 +942,7 @@ function ByteWorks.map<K, V>(keyType: ByteWorksType<K>, valueType: ByteWorksType
 		size = function(value)
 			local totalSize = 0
 			for k, v in value do
-				totalSize += keyType.size(k) + valueType.size(v)
+				totalSize += keySize(k) + valueSize(v)
 			end
 			return totalSize + 1
 		end,
