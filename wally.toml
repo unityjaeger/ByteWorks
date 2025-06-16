@@ -1,0 +1,13 @@
+[package]
+name = "unityjaeger/byteworks"
+description = ""
+version = "0.1.1"
+license = ""
+authors = ["unityjaeger"]
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+homepage = "https://unityjaeger.github.io/ByteWorks/"
+repository = "https://github.com/unityjaeger/ByteWorks"
+include = ["src/main.luau"]
+
+[dependencies]
